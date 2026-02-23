@@ -46,7 +46,6 @@ func (d *ImageDownloader) DownloadImage(imageURL string) (string, error) {
 	}
 
 	maxBytes := configs.GetImageMaxBytes()
-
 	// 创建请求并设置请求头
 	req, err := http.NewRequest("GET", imageURL, nil)
 	if err != nil {
