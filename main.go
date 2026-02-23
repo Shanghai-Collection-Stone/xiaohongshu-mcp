@@ -13,10 +13,14 @@ func main() {
 		headless bool
 		binPath  string // 浏览器二进制文件路径
 		port     string
+		dataDir  string
+		poolSize int
 	)
 	flag.BoolVar(&headless, "headless", true, "是否无头模式")
 	flag.StringVar(&binPath, "bin", "", "浏览器二进制文件路径")
 	flag.StringVar(&port, "port", ":18060", "端口")
+	flag.StringVar(&dataDir, "data_dir", "", "数据目录（users.json/ip.txt/cookies等）")
+	flag.IntVar(&poolSize, "browser_pool_size", 0, "浏览器并发池大小")
 	flag.Parse()
 
 	if len(binPath) == 0 {
@@ -25,12 +29,24 @@ func main() {
 
 	configs.InitHeadless(headless)
 	configs.SetBinPath(binPath)
+	configs.LoadRuntimeFromEnv()
+	if dataDir != "" {
+		configs.InitDataDir(dataDir)
+	}
+	if poolSize > 0 {
+		configs.InitBrowserPoolSize(poolSize)
+	}
+
+	runtime, err := NewRuntime(configs.GetDataDir(), configs.GetBrowserPoolSize())
+	if err != nil {
+		logrus.Fatalf("failed to init runtime: %v", err)
+	}
 
 	// 初始化服务
-	xiaohongshuService := NewXiaohongshuService()
+	xiaohongshuService := NewXiaohongshuService(runtime)
 
 	// 创建并启动应用服务器
-	appServer := NewAppServer(xiaohongshuService)
+	appServer := NewAppServer(xiaohongshuService, runtime)
 	if err := appServer.Start(port); err != nil {
 		logrus.Fatalf("failed to run server: %v", err)
 	}

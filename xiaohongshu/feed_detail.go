@@ -19,14 +19,13 @@ import (
 
 // ========== 配置常量 ==========
 const (
-	defaultMaxAttempts     = 500
-	stagnantLimit          = 20
-	minScrollDelta         = 10
-	maxClickPerRound       = 3
-	stagnantCheckThreshold = 2 // 达到目标后需要停滞几次才确认
-	largeScrollTrigger     = 5 // 停滞多少次后触发大滚动
-	buttonClickInterval    = 3 // 每隔多少次尝试点击一次按钮
-	finalSprintPushCount   = 15
+	defaultMaxAttempts   = 500
+	stagnantLimit        = 20
+	minScrollDelta       = 10
+	maxClickPerRound     = 3
+	largeScrollTrigger   = 5 // 停滞多少次后触发大滚动
+	buttonClickInterval  = 3 // 每隔多少次尝试点击一次按钮
+	finalSprintPushCount = 15
 )
 
 // 延迟时间配置（毫秒）

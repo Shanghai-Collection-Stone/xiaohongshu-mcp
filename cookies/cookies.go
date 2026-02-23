@@ -29,9 +29,11 @@ func NewLoadCookie(path string) Cookier {
 
 // LoadCookies 从文件中加载 cookies。
 func (c *localCookie) LoadCookies() ([]byte, error) {
-
 	data, err := os.ReadFile(c.path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
 		return nil, errors.Wrap(err, "failed to read cookies from tmp file")
 	}
 
@@ -40,6 +42,9 @@ func (c *localCookie) LoadCookies() ([]byte, error) {
 
 // SaveCookies 保存 cookies 到文件中。
 func (c *localCookie) SaveCookies(data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(c.path), 0755); err != nil {
+		return err
+	}
 	return os.WriteFile(c.path, data, 0644)
 }
 

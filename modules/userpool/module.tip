@@ -1,0 +1,9 @@
+模块: userpool
+目的: 管理 users.json 的读取、校验、查询与更新（按账号/序号选择用户）。
+依赖: 本地文件系统（users.json），不依赖外部服务。
+关键实体: User, UserFile。
+对外契约:
+- NewManager(dataDir string)
+- ListSummaries() []UserSummary
+- Resolve(account string, index *int) (User, error)
+- UpsertCookie(account string, cookieFile string) (User, error)

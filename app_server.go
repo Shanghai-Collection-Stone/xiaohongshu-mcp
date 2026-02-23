@@ -16,15 +16,17 @@ import (
 // AppServer 应用服务器结构体，封装所有服务和处理器
 type AppServer struct {
 	xiaohongshuService *XiaohongshuService
+	runtime            *Runtime
 	mcpServer          *mcp.Server
 	router             *gin.Engine
 	httpServer         *http.Server
 }
 
 // NewAppServer 创建新的应用服务器实例
-func NewAppServer(xiaohongshuService *XiaohongshuService) *AppServer {
+func NewAppServer(xiaohongshuService *XiaohongshuService, runtime *Runtime) *AppServer {
 	appServer := &AppServer{
 		xiaohongshuService: xiaohongshuService,
+		runtime:            runtime,
 	}
 
 	// 初始化 MCP Server（需要在创建 appServer 之后，因为工具注册需要访问 appServer）

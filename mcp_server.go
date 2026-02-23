@@ -15,28 +15,74 @@ func boolPtr(b bool) *bool { return &b }
 
 // MCP 工具参数结构体定义
 
+type UserSelector struct {
+	Account string `json:"account,omitempty" jsonschema:"账号（users.json中的account）"`
+	Index   *int   `json:"index,omitempty" jsonschema:"用户序号（users.json中的索引，从0开始）"`
+}
+
+type LoginUserArgs struct {
+	User *UserSelector `json:"user,omitempty" jsonschema:"可选用户选择器"`
+}
+
+type TargetUsers struct {
+	AllEnabled bool     `json:"all_enabled,omitempty" jsonschema:"是否选择 users.json 中 enabled=true 的所有用户"`
+	Accounts   []string `json:"accounts,omitempty" jsonschema:"指定账号列表（users.json 中的 account）"`
+	Indices    []int    `json:"indices,omitempty" jsonschema:"指定用户序号列表（users.json 的索引，从0开始）"`
+}
+
+type CheckLoginStatusBatchArgs struct {
+	Targets TargetUsers `json:"targets,omitempty" jsonschema:"批量目标选择（为空则默认 all_enabled=true）"`
+}
+
+type PublishContentBatchArgs struct {
+	Targets     TargetUsers `json:"targets,omitempty" jsonschema:"批量目标选择（为空则默认 all_enabled=true）"`
+	MaxAccounts int         `json:"max_accounts,omitempty" jsonschema:"最多使用多少个账号执行（从目标集合头部截取）"`
+	Title       string      `json:"title" jsonschema:"内容标题（小红书限制：最多20个中文字或英文单词）"`
+	Content     string      `json:"content" jsonschema:"正文内容，不包含以#开头的标签内容，所有话题标签都用tags参数来生成和提供即可"`
+	Images      []string    `json:"images" jsonschema:"图片路径列表（至少需要1张图片）。支持两种方式：1. HTTP/HTTPS图片链接（自动下载）；2. 本地图片绝对路径（推荐，如:/Users/user/image.jpg）"`
+	Tags        []string    `json:"tags,omitempty" jsonschema:"话题标签列表（可选参数），如 [美食, 旅行, 生活]"`
+	Location    string      `json:"location,omitempty" jsonschema:"发布地点（可选）。示例：上海迪士尼度假区 / 北京·三里屯"`
+	ScheduleAt  string      `json:"schedule_at,omitempty" jsonschema:"定时发布时间（可选），ISO8601格式如 2024-01-20T10:30:00+08:00，支持1小时至14天内。不填则立即发布"`
+}
+
 // PublishContentArgs 发布内容的参数
 type PublishContentArgs struct {
-	Title      string   `json:"title" jsonschema:"内容标题（小红书限制：最多20个中文字或英文单词）"`
-	Content    string   `json:"content" jsonschema:"正文内容，不包含以#开头的标签内容，所有话题标签都用tags参数来生成和提供即可"`
-	Images     []string `json:"images" jsonschema:"图片路径列表（至少需要1张图片）。支持两种方式：1. HTTP/HTTPS图片链接（自动下载）；2. 本地图片绝对路径（推荐，如:/Users/user/image.jpg）"`
-	Tags       []string `json:"tags,omitempty" jsonschema:"话题标签列表（可选参数），如 [美食, 旅行, 生活]"`
-	ScheduleAt string   `json:"schedule_at,omitempty" jsonschema:"定时发布时间（可选），ISO8601格式如 2024-01-20T10:30:00+08:00，支持1小时至14天内。不填则立即发布"`
+	User       *UserSelector `json:"user,omitempty" jsonschema:"可选用户选择器"`
+	Title      string        `json:"title" jsonschema:"内容标题（小红书限制：最多20个中文字或英文单词）"`
+	Content    string        `json:"content" jsonschema:"正文内容，不包含以#开头的标签内容，所有话题标签都用tags参数来生成和提供即可"`
+	Images     []string      `json:"images" jsonschema:"图片路径列表（至少需要1张图片）。支持两种方式：1. HTTP/HTTPS图片链接（自动下载）；2. 本地图片绝对路径（推荐，如:/Users/user/image.jpg）"`
+	Tags       []string      `json:"tags,omitempty" jsonschema:"话题标签列表（可选参数），如 [美食, 旅行, 生活]"`
+	Location   string        `json:"location,omitempty" jsonschema:"发布地点（可选）。示例：上海迪士尼度假区 / 北京·三里屯"`
+	ScheduleAt string        `json:"schedule_at,omitempty" jsonschema:"定时发布时间（可选），ISO8601格式如 2024-01-20T10:30:00+08:00，支持1小时至14天内。不填则立即发布"`
 }
 
 // PublishVideoArgs 发布视频的参数（仅支持本地单个视频文件）
 type PublishVideoArgs struct {
-	Title      string   `json:"title" jsonschema:"内容标题（小红书限制：最多20个中文字或英文单词）"`
-	Content    string   `json:"content" jsonschema:"正文内容，不包含以#开头的标签内容，所有话题标签都用tags参数来生成和提供即可"`
-	Video      string   `json:"video" jsonschema:"本地视频绝对路径（仅支持单个视频文件，如:/Users/user/video.mp4）"`
-	Tags       []string `json:"tags,omitempty" jsonschema:"话题标签列表（可选参数），如 [美食, 旅行, 生活]"`
-	ScheduleAt string   `json:"schedule_at,omitempty" jsonschema:"定时发布时间（可选），ISO8601格式如 2024-01-20T10:30:00+08:00，支持1小时至14天内。不填则立即发布"`
+	User       *UserSelector `json:"user,omitempty" jsonschema:"可选用户选择器"`
+	Title      string        `json:"title" jsonschema:"内容标题（小红书限制：最多20个中文字或英文单词）"`
+	Content    string        `json:"content" jsonschema:"正文内容，不包含以#开头的标签内容，所有话题标签都用tags参数来生成和提供即可"`
+	Video      string        `json:"video" jsonschema:"本地视频绝对路径（仅支持单个视频文件，如:/Users/user/video.mp4）"`
+	Tags       []string      `json:"tags,omitempty" jsonschema:"话题标签列表（可选参数），如 [美食, 旅行, 生活]"`
+	Location   string        `json:"location,omitempty" jsonschema:"发布地点（可选）。示例：上海迪士尼度假区 / 北京·三里屯"`
+	ScheduleAt string        `json:"schedule_at,omitempty" jsonschema:"定时发布时间（可选），ISO8601格式如 2024-01-20T10:30:00+08:00，支持1小时至14天内。不填则立即发布"`
 }
 
 // SearchFeedsArgs 搜索内容的参数
 type SearchFeedsArgs struct {
-	Keyword string       `json:"keyword" jsonschema:"搜索关键词"`
-	Filters FilterOption `json:"filters,omitempty" jsonschema:"筛选选项"`
+	User    *UserSelector `json:"user,omitempty" jsonschema:"可选用户选择器"`
+	Keyword string        `json:"keyword" jsonschema:"搜索关键词"`
+	Filters FilterOption  `json:"filters,omitempty" jsonschema:"筛选选项"`
+}
+
+type SearchFeedsBatchArgs struct {
+	Targets     TargetUsers  `json:"targets,omitempty" jsonschema:"批量目标选择（为空则默认使用 users.json enabled=true 的前 3 个账号）"`
+	MaxAccounts int          `json:"max_accounts,omitempty" jsonschema:"最多使用多少个账号执行搜索（最大 3；可填 1/2/3）"`
+	Keyword     string       `json:"keyword" jsonschema:"搜索关键词"`
+	Filters     FilterOption `json:"filters,omitempty" jsonschema:"筛选选项"`
+}
+
+type ListFeedsArgs struct {
+	User *UserSelector `json:"user,omitempty" jsonschema:"可选用户选择器"`
 }
 
 // FilterOption 筛选选项结构体
@@ -50,49 +96,82 @@ type FilterOption struct {
 
 // FeedDetailArgs 获取Feed详情的参数
 type FeedDetailArgs struct {
-	FeedID           string `json:"feed_id" jsonschema:"小红书笔记ID，从Feed列表获取"`
-	XsecToken        string `json:"xsec_token" jsonschema:"访问令牌，从Feed列表的xsecToken字段获取"`
-	LoadAllComments  bool   `json:"load_all_comments,omitempty" jsonschema:"是否加载全部评论。false仅返回前10条一级评论（默认），true滚动加载更多评论"`
-	Limit            int    `json:"limit,omitempty" jsonschema:"【仅当load_all_comments为true时生效】限制加载的一级评论数量。例如20表示最多加载20条，默认20"`
-	ClickMoreReplies bool   `json:"click_more_replies,omitempty" jsonschema:"【仅当load_all_comments为true时生效】是否展开二级回复。true展开子评论，false不展开（默认）"`
-	ReplyLimit       int    `json:"reply_limit,omitempty" jsonschema:"【仅当click_more_replies为true时生效】跳过回复数过多的评论。例如10表示跳过超过10条回复的，默认10"`
-	ScrollSpeed      string `json:"scroll_speed,omitempty" jsonschema:"【仅当load_all_comments为true时生效】滚动速度slow慢速、normal正常、fast快速"`
+	User             *UserSelector `json:"user,omitempty" jsonschema:"可选用户选择器"`
+	FeedID           string        `json:"feed_id" jsonschema:"小红书笔记ID，从Feed列表获取"`
+	XsecToken        string        `json:"xsec_token" jsonschema:"访问令牌，从Feed列表的xsecToken字段获取"`
+	LoadAllComments  bool          `json:"load_all_comments,omitempty" jsonschema:"是否加载全部评论。false仅返回前10条一级评论（默认），true滚动加载更多评论"`
+	Limit            int           `json:"limit,omitempty" jsonschema:"【仅当load_all_comments为true时生效】限制加载的一级评论数量。例如20表示最多加载20条，默认20"`
+	ClickMoreReplies bool          `json:"click_more_replies,omitempty" jsonschema:"【仅当load_all_comments为true时生效】是否展开二级回复。true展开子评论，false不展开（默认）"`
+	ReplyLimit       int           `json:"reply_limit,omitempty" jsonschema:"【仅当click_more_replies为true时生效】跳过回复数过多的评论。例如10表示跳过超过10条回复的，默认10"`
+	ScrollSpeed      string        `json:"scroll_speed,omitempty" jsonschema:"【仅当load_all_comments为true时生效】滚动速度slow慢速、normal正常、fast快速"`
 }
 
 // UserProfileArgs 获取用户主页的参数
 type UserProfileArgs struct {
-	UserID    string `json:"user_id" jsonschema:"小红书用户ID，从Feed列表获取"`
-	XsecToken string `json:"xsec_token" jsonschema:"访问令牌，从Feed列表的xsecToken字段获取"`
+	User      *UserSelector `json:"user,omitempty" jsonschema:"可选用户选择器"`
+	UserID    string        `json:"user_id" jsonschema:"小红书用户ID，从Feed列表获取"`
+	XsecToken string        `json:"xsec_token" jsonschema:"访问令牌，从Feed列表的xsecToken字段获取"`
 }
 
 // PostCommentArgs 发表评论的参数
 type PostCommentArgs struct {
-	FeedID    string `json:"feed_id" jsonschema:"小红书笔记ID，从Feed列表获取"`
-	XsecToken string `json:"xsec_token" jsonschema:"访问令牌，从Feed列表的xsecToken字段获取"`
-	Content   string `json:"content" jsonschema:"评论内容"`
+	User      *UserSelector `json:"user,omitempty" jsonschema:"可选用户选择器"`
+	FeedID    string        `json:"feed_id" jsonschema:"小红书笔记ID，从Feed列表获取"`
+	XsecToken string        `json:"xsec_token" jsonschema:"访问令牌，从Feed列表的xsecToken字段获取"`
+	Content   string        `json:"content" jsonschema:"评论内容"`
 }
 
 // ReplyCommentArgs 回复评论的参数
 type ReplyCommentArgs struct {
-	FeedID    string `json:"feed_id" jsonschema:"小红书笔记ID，从Feed列表获取"`
-	XsecToken string `json:"xsec_token" jsonschema:"访问令牌，从Feed列表的xsecToken字段获取"`
-	CommentID string `json:"comment_id,omitempty" jsonschema:"目标评论ID，从评论列表获取"`
-	UserID    string `json:"user_id,omitempty" jsonschema:"目标评论用户ID，从评论列表获取"`
-	Content   string `json:"content" jsonschema:"回复内容"`
+	User      *UserSelector `json:"user,omitempty" jsonschema:"可选用户选择器"`
+	FeedID    string        `json:"feed_id" jsonschema:"小红书笔记ID，从Feed列表获取"`
+	XsecToken string        `json:"xsec_token" jsonschema:"访问令牌，从Feed列表的xsecToken字段获取"`
+	CommentID string        `json:"comment_id,omitempty" jsonschema:"目标评论ID，从评论列表获取"`
+	UserID    string        `json:"user_id,omitempty" jsonschema:"目标评论用户ID，从评论列表获取"`
+	Content   string        `json:"content" jsonschema:"回复内容"`
 }
 
 // LikeFeedArgs 点赞参数
 type LikeFeedArgs struct {
-	FeedID    string `json:"feed_id" jsonschema:"小红书笔记ID，从Feed列表获取"`
-	XsecToken string `json:"xsec_token" jsonschema:"访问令牌，从Feed列表的xsecToken字段获取"`
-	Unlike    bool   `json:"unlike,omitempty" jsonschema:"是否取消点赞，true为取消点赞，false或未设置则为点赞"`
+	User      *UserSelector `json:"user,omitempty" jsonschema:"可选用户选择器"`
+	FeedID    string        `json:"feed_id" jsonschema:"小红书笔记ID，从Feed列表获取"`
+	XsecToken string        `json:"xsec_token" jsonschema:"访问令牌，从Feed列表的xsecToken字段获取"`
+	Unlike    bool          `json:"unlike,omitempty" jsonschema:"是否取消点赞，true为取消点赞，false或未设置则为点赞"`
 }
 
 // FavoriteFeedArgs 收藏参数
 type FavoriteFeedArgs struct {
-	FeedID     string `json:"feed_id" jsonschema:"小红书笔记ID，从Feed列表获取"`
-	XsecToken  string `json:"xsec_token" jsonschema:"访问令牌，从Feed列表的xsecToken字段获取"`
-	Unfavorite bool   `json:"unfavorite,omitempty" jsonschema:"是否取消收藏，true为取消收藏，false或未设置则为收藏"`
+	User       *UserSelector `json:"user,omitempty" jsonschema:"可选用户选择器"`
+	FeedID     string        `json:"feed_id" jsonschema:"小红书笔记ID，从Feed列表获取"`
+	XsecToken  string        `json:"xsec_token" jsonschema:"访问令牌，从Feed列表的xsecToken字段获取"`
+	Unfavorite bool          `json:"unfavorite,omitempty" jsonschema:"是否取消收藏，true为取消收藏，false或未设置则为收藏"`
+}
+
+type BatchTaskOpenArgs struct{}
+
+type BatchTaskAddPostArgs struct {
+	TaskID string    `json:"task_id" jsonschema:"批量任务ID"`
+	Post   BatchPost `json:"post" jsonschema:"要加入批量任务的图文内容"`
+}
+
+type BatchTaskRunArgs struct {
+	TaskID        string `json:"task_id" jsonschema:"批量任务ID"`
+	CallbackURL   string `json:"callback_url,omitempty" jsonschema:"回调URL（POST JSON：任务进度与状态）"`
+	MinDelayMs    int    `json:"min_delay_ms,omitempty" jsonschema:"每篇发布后随机延迟最小值（毫秒）"`
+	MaxDelayMs    int    `json:"max_delay_ms,omitempty" jsonschema:"每篇发布后随机延迟最大值（毫秒）"`
+	MaxAccounts   int    `json:"max_accounts,omitempty" jsonschema:"最多使用多少个账号（从用户池启用账号顺序取前N个）"`
+	ItemTimeoutMs int    `json:"item_timeout_ms,omitempty" jsonschema:"单条发布超时时间（毫秒），超时将计入失败并继续下一条；默认 360000ms"`
+}
+
+type BatchTaskRunSyncArgs struct {
+	TaskID         string `json:"task_id" jsonschema:"批量任务ID"`
+	CallbackURL    string `json:"callback_url,omitempty" jsonschema:"回调URL（POST JSON：任务进度与状态）"`
+	MinDelayMs     int    `json:"min_delay_ms,omitempty" jsonschema:"每篇发布后随机延迟最小值（毫秒）"`
+	MaxDelayMs     int    `json:"max_delay_ms,omitempty" jsonschema:"每篇发布后随机延迟最大值（毫秒）"`
+	MaxAccounts    int    `json:"max_accounts,omitempty" jsonschema:"最多使用多少个账号（从用户池启用账号顺序取前N个）"`
+	ItemTimeoutMs  int    `json:"item_timeout_ms,omitempty" jsonschema:"单条发布超时时间（毫秒），超时将计入失败并继续下一条；默认 360000ms"`
+	WaitTimeoutMs  int    `json:"wait_timeout_ms,omitempty" jsonschema:"等待批量任务完成的最长时间（毫秒）；默认 1800000ms"`
+	PollIntervalMs int    `json:"poll_interval_ms,omitempty" jsonschema:"轮询间隔（毫秒），默认 500ms"`
 }
 
 // InitMCPServer 初始化 MCP Server
@@ -158,8 +237,24 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 				ReadOnlyHint: true,
 			},
 		},
-		withPanicRecovery("check_login_status", func(ctx context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, any, error) {
-			result := appServer.handleCheckLoginStatus(ctx)
+		withPanicRecovery("check_login_status", func(ctx context.Context, req *mcp.CallToolRequest, args LoginUserArgs) (*mcp.CallToolResult, any, error) {
+			result := appServer.handleCheckLoginStatus(ctx, args)
+			return convertToMCPResult(result), nil, nil
+		}),
+	)
+
+	// 工具 1.1: 批量检查登录状态
+	mcp.AddTool(server,
+		&mcp.Tool{
+			Name:        "check_login_status_batch",
+			Description: "批量检查多个账号的小红书登录状态",
+			Annotations: &mcp.ToolAnnotations{
+				Title:        "Check Login Status Batch",
+				ReadOnlyHint: true,
+			},
+		},
+		withPanicRecovery("check_login_status_batch", func(ctx context.Context, req *mcp.CallToolRequest, args CheckLoginStatusBatchArgs) (*mcp.CallToolResult, any, error) {
+			result := appServer.handleCheckLoginStatusBatch(ctx, args)
 			return convertToMCPResult(result), nil, nil
 		}),
 	)
@@ -174,8 +269,8 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 				ReadOnlyHint: true,
 			},
 		},
-		withPanicRecovery("get_login_qrcode", func(ctx context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, any, error) {
-			result := appServer.handleGetLoginQrcode(ctx)
+		withPanicRecovery("get_login_qrcode", func(ctx context.Context, req *mcp.CallToolRequest, args LoginUserArgs) (*mcp.CallToolResult, any, error) {
+			result := appServer.handleGetLoginQrcode(ctx, args)
 			return convertToMCPResult(result), nil, nil
 		}),
 	)
@@ -190,8 +285,8 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 				DestructiveHint: boolPtr(true),
 			},
 		},
-		withPanicRecovery("delete_cookies", func(ctx context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, any, error) {
-			result := appServer.handleDeleteCookies(ctx)
+		withPanicRecovery("delete_cookies", func(ctx context.Context, req *mcp.CallToolRequest, args LoginUserArgs) (*mcp.CallToolResult, any, error) {
+			result := appServer.handleDeleteCookies(ctx, args)
 			return convertToMCPResult(result), nil, nil
 		}),
 	)
@@ -209,13 +304,31 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 		withPanicRecovery("publish_content", func(ctx context.Context, req *mcp.CallToolRequest, args PublishContentArgs) (*mcp.CallToolResult, any, error) {
 			// 转换参数格式到现有的 handler
 			argsMap := map[string]interface{}{
+				"user":        args.User,
 				"title":       args.Title,
 				"content":     args.Content,
 				"images":      convertStringsToInterfaces(args.Images),
 				"tags":        convertStringsToInterfaces(args.Tags),
+				"location":    args.Location,
 				"schedule_at": args.ScheduleAt,
 			}
 			result := appServer.handlePublishContent(ctx, argsMap)
+			return convertToMCPResult(result), nil, nil
+		}),
+	)
+
+	// 工具 4.1: 批量发布内容
+	mcp.AddTool(server,
+		&mcp.Tool{
+			Name:        "publish_content_batch",
+			Description: "批量发布小红书图文内容（按账号并发执行）",
+			Annotations: &mcp.ToolAnnotations{
+				Title:           "Publish Content Batch",
+				DestructiveHint: boolPtr(true),
+			},
+		},
+		withPanicRecovery("publish_content_batch", func(ctx context.Context, req *mcp.CallToolRequest, args PublishContentBatchArgs) (*mcp.CallToolResult, any, error) {
+			result := appServer.handlePublishContentBatch(ctx, args)
 			return convertToMCPResult(result), nil, nil
 		}),
 	)
@@ -230,8 +343,8 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 				ReadOnlyHint: true,
 			},
 		},
-		withPanicRecovery("list_feeds", func(ctx context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, any, error) {
-			result := appServer.handleListFeeds(ctx)
+		withPanicRecovery("list_feeds", func(ctx context.Context, req *mcp.CallToolRequest, args ListFeedsArgs) (*mcp.CallToolResult, any, error) {
+			result := appServer.handleListFeeds(ctx, args)
 			return convertToMCPResult(result), nil, nil
 		}),
 	)
@@ -252,6 +365,22 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 		}),
 	)
 
+	// 工具 6.1: 批量搜索内容（最多 3 个账号）
+	mcp.AddTool(server,
+		&mcp.Tool{
+			Name:        "search_feeds_batch",
+			Description: "批量搜索小红书内容（默认最多 3 个账号并发执行）",
+			Annotations: &mcp.ToolAnnotations{
+				Title:        "Search Feeds Batch",
+				ReadOnlyHint: true,
+			},
+		},
+		withPanicRecovery("search_feeds_batch", func(ctx context.Context, req *mcp.CallToolRequest, args SearchFeedsBatchArgs) (*mcp.CallToolResult, any, error) {
+			result := appServer.handleSearchFeedsBatch(ctx, args)
+			return convertToMCPResult(result), nil, nil
+		}),
+	)
+
 	// 工具 7: 获取Feed详情
 	mcp.AddTool(server,
 		&mcp.Tool{
@@ -264,6 +393,7 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 		},
 		withPanicRecovery("get_feed_detail", func(ctx context.Context, req *mcp.CallToolRequest, args FeedDetailArgs) (*mcp.CallToolResult, any, error) {
 			argsMap := map[string]interface{}{
+				"user":              args.User,
 				"feed_id":           args.FeedID,
 				"xsec_token":        args.XsecToken,
 				"load_all_comments": args.LoadAllComments,
@@ -309,6 +439,7 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 		},
 		withPanicRecovery("user_profile", func(ctx context.Context, req *mcp.CallToolRequest, args UserProfileArgs) (*mcp.CallToolResult, any, error) {
 			argsMap := map[string]interface{}{
+				"user":       args.User,
 				"user_id":    args.UserID,
 				"xsec_token": args.XsecToken,
 			}
@@ -329,6 +460,7 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 		},
 		withPanicRecovery("post_comment_to_feed", func(ctx context.Context, req *mcp.CallToolRequest, args PostCommentArgs) (*mcp.CallToolResult, any, error) {
 			argsMap := map[string]interface{}{
+				"user":       args.User,
 				"feed_id":    args.FeedID,
 				"xsec_token": args.XsecToken,
 				"content":    args.Content,
@@ -357,6 +489,7 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 			}
 
 			argsMap := map[string]interface{}{
+				"user":       args.User,
 				"feed_id":    args.FeedID,
 				"xsec_token": args.XsecToken,
 				"comment_id": args.CommentID,
@@ -380,10 +513,12 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 		},
 		withPanicRecovery("publish_with_video", func(ctx context.Context, req *mcp.CallToolRequest, args PublishVideoArgs) (*mcp.CallToolResult, any, error) {
 			argsMap := map[string]interface{}{
+				"user":        args.User,
 				"title":       args.Title,
 				"content":     args.Content,
 				"video":       args.Video,
 				"tags":        convertStringsToInterfaces(args.Tags),
+				"location":    args.Location,
 				"schedule_at": args.ScheduleAt,
 			}
 			result := appServer.handlePublishVideo(ctx, argsMap)
@@ -403,6 +538,7 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 		},
 		withPanicRecovery("like_feed", func(ctx context.Context, req *mcp.CallToolRequest, args LikeFeedArgs) (*mcp.CallToolResult, any, error) {
 			argsMap := map[string]interface{}{
+				"user":       args.User,
 				"feed_id":    args.FeedID,
 				"xsec_token": args.XsecToken,
 				"unlike":     args.Unlike,
@@ -424,6 +560,7 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 		},
 		withPanicRecovery("favorite_feed", func(ctx context.Context, req *mcp.CallToolRequest, args FavoriteFeedArgs) (*mcp.CallToolResult, any, error) {
 			argsMap := map[string]interface{}{
+				"user":       args.User,
 				"feed_id":    args.FeedID,
 				"xsec_token": args.XsecToken,
 				"unfavorite": args.Unfavorite,
@@ -433,7 +570,75 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 		}),
 	)
 
-	logrus.Infof("Registered %d MCP tools", 13)
+	// 工具 14: 用户列表
+	mcp.AddTool(server,
+		&mcp.Tool{
+			Name:        "list_users",
+			Description: "列出用户池中的用户",
+			Annotations: &mcp.ToolAnnotations{
+				Title:        "List Users",
+				ReadOnlyHint: true,
+			},
+		},
+		withPanicRecovery("list_users", func(ctx context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, any, error) {
+			result := appServer.handleListUsers(ctx)
+			return convertToMCPResult(result), nil, nil
+		}),
+	)
+
+	// 工具 15: 开启批量任务
+	mcp.AddTool(server,
+		&mcp.Tool{
+			Name:        "batch_task_open",
+			Description: "开启批量任务并返回任务ID",
+			Annotations: &mcp.ToolAnnotations{Title: "Batch Task Open"},
+		},
+		withPanicRecovery("batch_task_open", func(ctx context.Context, req *mcp.CallToolRequest, _ BatchTaskOpenArgs) (*mcp.CallToolResult, any, error) {
+			result := appServer.handleBatchTaskOpen(ctx)
+			return convertToMCPResult(result), nil, nil
+		}),
+	)
+
+	// 工具 16: 往批量任务塞内容
+	mcp.AddTool(server,
+		&mcp.Tool{
+			Name:        "batch_task_add_post",
+			Description: "向批量任务添加一篇图文内容",
+			Annotations: &mcp.ToolAnnotations{Title: "Batch Task Add Post", DestructiveHint: boolPtr(true)},
+		},
+		withPanicRecovery("batch_task_add_post", func(ctx context.Context, req *mcp.CallToolRequest, args BatchTaskAddPostArgs) (*mcp.CallToolResult, any, error) {
+			result := appServer.handleBatchTaskAddPost(ctx, args)
+			return convertToMCPResult(result), nil, nil
+		}),
+	)
+
+	// 工具 17: 运行批量任务
+	mcp.AddTool(server,
+		&mcp.Tool{
+			Name:        "batch_task_run",
+			Description: "运行批量任务（可设置回调URL与随机延迟区间）",
+			Annotations: &mcp.ToolAnnotations{Title: "Batch Task Run", DestructiveHint: boolPtr(true)},
+		},
+		withPanicRecovery("batch_task_run", func(ctx context.Context, req *mcp.CallToolRequest, args BatchTaskRunArgs) (*mcp.CallToolResult, any, error) {
+			result := appServer.handleBatchTaskRun(ctx, args)
+			return convertToMCPResult(result), nil, nil
+		}),
+	)
+
+	// 工具 18: 运行批量任务（同步等待完成）
+	mcp.AddTool(server,
+		&mcp.Tool{
+			Name:        "batch_task_run_sync",
+			Description: "运行批量任务并同步等待完成（适合不使用回调的场景）",
+			Annotations: &mcp.ToolAnnotations{Title: "Batch Task Run Sync", DestructiveHint: boolPtr(true)},
+		},
+		withPanicRecovery("batch_task_run_sync", func(ctx context.Context, req *mcp.CallToolRequest, args BatchTaskRunSyncArgs) (*mcp.CallToolResult, any, error) {
+			result := appServer.handleBatchTaskRunSync(ctx, args)
+			return convertToMCPResult(result), nil, nil
+		}),
+	)
+
+	logrus.Infof("Registered %d MCP tools", 19)
 }
 
 // convertToMCPResult 将自定义的 MCPToolResult 转换为官方 SDK 的格式

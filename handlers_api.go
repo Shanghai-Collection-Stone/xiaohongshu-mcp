@@ -293,3 +293,22 @@ func (s *AppServer) myProfileHandler(c *gin.Context) {
 	c.Set("account", "ai-report")
 	respondSuccess(c, map[string]any{"data": result}, "获取我的主页成功")
 }
+
+func (s *AppServer) getBatchTaskStatusHandler(c *gin.Context) {
+	taskID := c.Param("task_id")
+	if taskID == "" {
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", "缺少 task_id", nil)
+		return
+	}
+	if s.runtime == nil || s.runtime.BatchTasks == nil {
+		respondError(c, http.StatusInternalServerError, "BATCH_NOT_READY", "批量任务未初始化", nil)
+		return
+	}
+	status, ok := s.runtime.BatchTasks.Snapshot(taskID)
+	if !ok {
+		respondError(c, http.StatusNotFound, "TASK_NOT_FOUND", "任务不存在", nil)
+		return
+	}
+	c.Set("account", "ai-report")
+	respondSuccess(c, status, "获取任务状态成功")
+}

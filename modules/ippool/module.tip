@@ -1,0 +1,8 @@
+模块: ippool
+目的: 管理 ip.txt 的读取与解析，提供按索引或直写值解析代理地址。
+依赖: 本地文件系统（ip.txt）。
+关键实体: Pool。
+对外契约:
+- NewPool(dataDir string)
+- All() []string
+- Resolve(ref any) (string, bool)

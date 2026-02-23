@@ -1,0 +1,8 @@
+模块: cookiestore
+目的: 统一管理 cookies 文件路径规则与读写删除，按账号隔离 cookies。
+依赖: 本地文件系统；兼容旧 COOKIES_PATH/cookies.json 作为 default。
+关键实体: Store。
+对外契约:
+- NewStore(dataDir string)
+- CookiePathFor(account string, cookieFileHint string) (string, string)
+- EnsureDir(path string) error
