@@ -74,13 +74,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /out/app .
 
 # 4. 创建共享目录并设置权限
-RUN mkdir -p /app/images && \
-    chmod 777 /app/images
+RUN mkdir -p /app/images /app/data && \
+    chmod 777 /app/images /app/data
 
 # 5. 设置默认 Chrome 路径（rod 会用）
 ENV ROD_BROWSER_BIN=/usr/bin/google-chrome
 
+# 6. 默认数据目录与浏览器并发（可被 docker-compose 覆盖）
+ENV XHS_MCP_DATA_DIR=/app/data
+ENV XHS_MCP_BROWSER_POOL_SIZE=1
+
 EXPOSE 18060
 
 CMD ["./app"]
-
