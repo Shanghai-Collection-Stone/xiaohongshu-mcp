@@ -8,8 +8,8 @@ services:
     init: true
     tty: true
     volumes:
-      - ./data:/app/data
-      - ./images:/app/images
+      - ../data:/app/data
+      - ../images:/app/images
     environment:
       - ROD_BROWSER_BIN=/usr/bin/google-chrome
       - XHS_MCP_DATA_DIR=/app/data
