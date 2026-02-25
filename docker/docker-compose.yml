@@ -13,6 +13,6 @@ services:
     environment:
       - ROD_BROWSER_BIN=/usr/bin/google-chrome
       - XHS_MCP_DATA_DIR=/app/data
-      - XHS_MCP_BROWSER_POOL_SIZE=1
+      - XHS_MCP_BROWSER_POOL_SIZE=2
     ports:
       - "18060:18060"
