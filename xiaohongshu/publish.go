@@ -2,6 +2,7 @@ package xiaohongshu
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"math/rand"
 	"os"
@@ -73,8 +74,12 @@ func (p *PublishAction) Publish(ctx context.Context, content PublishImageContent
 
 	page := p.page.Context(ctx)
 
-	if err := uploadImages(page, content.ImagePaths); err != nil {
+	uploadedCount, err := uploadImages(page, content.ImagePaths)
+	if err != nil {
 		return errors.Wrap(err, "小红书上传图片失败")
+	}
+	if err := waitForUploadComplete(page, uploadedCount); err != nil {
+		return errors.Wrap(err, "小红书上传图片未完成")
 	}
 
 	tags := content.Tags
@@ -199,7 +204,7 @@ func isElementBlocked(elem *rod.Element) (bool, error) {
 	return result.Value.Bool(), nil
 }
 
-func uploadImages(page *rod.Page, imagesPaths []string) error {
+func uploadImages(page *rod.Page, imagesPaths []string) (int, error) {
 	// 验证文件路径有效性
 	validPaths := make([]string, 0, len(imagesPaths))
 	for _, path := range imagesPaths {
@@ -209,6 +214,9 @@ func uploadImages(page *rod.Page, imagesPaths []string) error {
 		}
 		validPaths = append(validPaths, path)
 		logrus.Infof("获取有效图片：%s", path)
+	}
+	if len(validPaths) == 0 {
+		return 0, errors.New("没有可用的本地图片文件")
 	}
 
 	// 逐张上传：每张上传后等待预览出现，再上传下一张
@@ -220,53 +228,279 @@ func uploadImages(page *rod.Page, imagesPaths []string) error {
 
 		uploadInput, err := page.Element(selector)
 		if err != nil {
-			return errors.Wrapf(err, "查找上传输入框失败(第%d张)", i+1)
+			return 0, errors.Wrapf(err, "查找上传输入框失败(第%d张)", i+1)
 		}
 		if err := uploadInput.SetFiles([]string{path}); err != nil {
-			return errors.Wrapf(err, "上传第%d张图片失败", i+1)
+			return 0, errors.Wrapf(err, "上传第%d张图片失败", i+1)
 		}
 
 		slog.Info("图片已提交上传", "index", i+1, "path", path)
 
-		// 等待当前图片上传完成（预览元素数量达到 i+1），最多等 60 秒
+		// 等待当前图片上传完成（预览元素数量达到 i+1），并且上传状态稳定
 		if err := waitForUploadComplete(page, i+1); err != nil {
-			return errors.Wrapf(err, "第%d张图片上传超时", i+1)
+			return 0, errors.Wrapf(err, "第%d张图片上传超时", i+1)
 		}
 		time.Sleep(1 * time.Second)
 	}
 
-	return nil
+	return len(validPaths), nil
 }
 
-// waitForUploadComplete 等待第 expectedCount 张图片上传完成，最多等 60 秒
 func waitForUploadComplete(page *rod.Page, expectedCount int) error {
-	maxWaitTime := 60 * time.Second
-	checkInterval := 500 * time.Millisecond
+	maxWaitTime := 3 * time.Minute
+	checkInterval := 600 * time.Millisecond
 	start := time.Now()
-	lastLogCount := expectedCount - 1
+	stableSince := time.Time{}
+	lastLog := time.Time{}
 
 	for time.Since(start) < maxWaitTime {
-		uploadedImages, err := page.Elements(".img-preview-area .pr")
+		st, err := probeImageUploadState(page)
 		if err != nil {
 			time.Sleep(checkInterval)
 			continue
 		}
-
-		currentCount := len(uploadedImages)
-		// 数量变化时才打印，避免刷屏
-		if currentCount != lastLogCount {
-			slog.Info("等待图片上传", "current", currentCount, "expected", expectedCount)
-			lastLogCount = currentCount
+		if st.ErrorCount > 0 {
+			return errors.Errorf("检测到图片上传失败提示: error_count=%d", st.ErrorCount)
 		}
-		if currentCount >= expectedCount {
-			slog.Info("图片上传完成", "count", currentCount)
-			return nil
+
+		ready := st.PreviewCount >= expectedCount && st.ReadyCount >= expectedCount && st.UploadingCount == 0
+		if ready {
+			if stableSince.IsZero() {
+				stableSince = time.Now()
+			}
+			if time.Since(stableSince) >= 2*time.Second {
+				slog.Info("图片上传完成", "count", st.PreviewCount)
+				return nil
+			}
+		} else {
+			stableSince = time.Time{}
+		}
+
+		if lastLog.IsZero() || time.Since(lastLog) >= 3*time.Second {
+			slog.Info("等待图片上传", "preview", st.PreviewCount, "ready", st.ReadyCount, "uploading", st.UploadingCount, "expected", expectedCount)
+			lastLog = time.Now()
 		}
 
 		time.Sleep(checkInterval)
 	}
 
-	return errors.Errorf("第%d张图片上传超时(60s)，请检查网络连接和图片大小", expectedCount)
+	return errors.Errorf("图片上传超时(%s)，请检查网络连接和图片大小", maxWaitTime)
+}
+
+type imageUploadState struct {
+	PreviewCount   int `json:"previewCount"`
+	ReadyCount     int `json:"readyCount"`
+	UploadingCount int `json:"uploadingCount"`
+	ErrorCount     int `json:"errorCount"`
+}
+
+func probeImageUploadState(page *rod.Page) (imageUploadState, error) {
+	res, err := page.Eval(`() => {
+		const root = document.querySelector(".img-preview-area") || document;
+		const previewSelectors = [
+			".img-preview-area .pr",
+			".img-preview-area .img-preview",
+			".img-preview-area [class*='preview']",
+		];
+		const previews = [];
+		for (const sel of previewSelectors) {
+			for (const n of Array.from(document.querySelectorAll(sel))) {
+				if (!previews.includes(n)) previews.push(n);
+			}
+		}
+
+		const textContains = (node, re) => {
+			const t = (node && node.textContent) ? node.textContent : "";
+			return re.test(t);
+		};
+
+		const isVisible = (el) => {
+			if (!el) return false;
+			const rect = el.getBoundingClientRect();
+			return rect.width > 0 && rect.height > 0;
+		};
+
+		let uploadingCount = 0;
+		let errorCount = 0;
+		let readyCount = 0;
+		for (const p of previews) {
+			const t = (p.textContent || "").trim();
+			if (/上传失败|失败|重试|重新上传/.test(t)) {
+				errorCount++;
+				continue;
+			}
+			if (/上传中|处理中|排队中|等待中/.test(t)) {
+				uploadingCount++;
+				continue;
+			}
+
+			const progressLike = p.querySelector("[class*='progress'],[class*='loading'],.d-loading,.loading,.progress,.spin,.spinner");
+			if (progressLike && isVisible(progressLike)) {
+				uploadingCount++;
+				continue;
+			}
+
+			const img = p.querySelector("img");
+			if (img && img.complete && img.naturalWidth > 0) {
+				readyCount++;
+				continue;
+			}
+
+			const bg = window.getComputedStyle(p).backgroundImage;
+			if (bg && bg !== "none") {
+				readyCount++;
+				continue;
+			}
+		}
+
+		const pageText = (document.body && document.body.innerText) ? document.body.innerText : "";
+		if (/上传失败|图片上传失败|上传出错/.test(pageText)) {
+			errorCount = Math.max(errorCount, 1);
+		}
+
+		return JSON.stringify({
+			previewCount: previews.length,
+			readyCount,
+			uploadingCount,
+			errorCount,
+		});
+	}`)
+	if err != nil {
+		return imageUploadState{}, err
+	}
+
+	raw := res.Value.String()
+	var st imageUploadState
+	if uerr := json.Unmarshal([]byte(raw), &st); uerr != nil {
+		return imageUploadState{}, uerr
+	}
+	return st, nil
+}
+
+type publishCheckState struct {
+	ToastText string `json:"toastText"`
+}
+
+func waitForPublishResult(page *rod.Page) error {
+	maxWaitTime := 90 * time.Second
+	checkInterval := 700 * time.Millisecond
+	start := time.Now()
+	initialURL := ""
+	if info, err := page.Info(); err == nil && info != nil {
+		initialURL = info.URL
+	}
+
+	lastLog := time.Time{}
+	for time.Since(start) < maxWaitTime {
+		curURL := ""
+		if info, err := page.Info(); err == nil && info != nil {
+			curURL = info.URL
+		}
+		if initialURL != "" && curURL != "" && curURL != initialURL && !strings.Contains(curURL, "/publish/publish") {
+			slog.Info("发布页面已跳转", "from", initialURL, "to", curURL)
+			return nil
+		}
+
+		st, err := probePublishState(page)
+		if err == nil && strings.TrimSpace(st.ToastText) != "" {
+			switch classifyPublishMessage(st.ToastText) {
+			case publishMessageSuccess:
+				slog.Info("检测到发布成功提示", "toast", shortenForLog(st.ToastText, 200))
+				return nil
+			case publishMessageError:
+				return errors.Errorf("检测到发布失败提示: %s", shortenForLog(st.ToastText, 240))
+			}
+		}
+
+		if lastLog.IsZero() || time.Since(lastLog) >= 5*time.Second {
+			slog.Info("等待发布结果", "url", shortenForLog(curURL, 180))
+			lastLog = time.Now()
+		}
+		time.Sleep(checkInterval)
+	}
+
+	return errors.Errorf("等待发布结果超时(%s)", maxWaitTime)
+}
+
+func shortenForLog(s string, maxRunes int) string {
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.TrimSpace(s)
+	if maxRunes <= 0 {
+		return s
+	}
+	rs := []rune(s)
+	if len(rs) <= maxRunes {
+		return s
+	}
+	return string(rs[:maxRunes]) + "…"
+}
+
+type publishMessageKind int
+
+const (
+	publishMessageUnknown publishMessageKind = iota
+	publishMessageSuccess
+	publishMessageError
+)
+
+func classifyPublishMessage(msg string) publishMessageKind {
+	m := strings.TrimSpace(msg)
+	if m == "" {
+		return publishMessageUnknown
+	}
+	if strings.Contains(m, "发布成功") || strings.Contains(m, "已发布") || strings.Contains(m, "发布完成") || strings.Contains(m, "提交成功") || strings.Contains(m, "审核中") || strings.Contains(m, "发布中") {
+		return publishMessageSuccess
+	}
+	if strings.Contains(m, "发布失败") || strings.Contains(m, "失败") || strings.Contains(m, "出错") || strings.Contains(m, "错误") {
+		return publishMessageError
+	}
+	return publishMessageUnknown
+}
+
+func probePublishState(page *rod.Page) (publishCheckState, error) {
+	res, err := page.Eval(`() => {
+		const isVisible = (el) => {
+			if (!el) return false;
+			const rect = el.getBoundingClientRect();
+			return rect.width > 0 && rect.height > 0;
+		};
+
+		const candidates = [];
+		const selectors = [
+			".d-message",
+			".d-toast",
+			".toast",
+			"[role='alert']",
+			".message",
+			".d-notification",
+		];
+		for (const sel of selectors) {
+			for (const el of Array.from(document.querySelectorAll(sel))) {
+				if (isVisible(el)) candidates.push(el);
+			}
+		}
+		let toastText = "";
+		if (candidates.length > 0) {
+			const last = candidates[candidates.length - 1];
+			toastText = (last.textContent || "").trim();
+		}
+		if (!toastText) {
+			const bodyText = (document.body && document.body.innerText) ? document.body.innerText : "";
+			const m = bodyText.match(/发布成功|提交成功|审核中|发布失败|上传失败|失败/);
+			if (m && m[0]) toastText = m[0];
+		}
+		return JSON.stringify({ toastText });
+	}`)
+	if err != nil {
+		return publishCheckState{}, err
+	}
+	raw := res.Value.String()
+	var st publishCheckState
+	if uerr := json.Unmarshal([]byte(raw), &st); uerr != nil {
+		return publishCheckState{}, uerr
+	}
+	return st, nil
 }
 
 func submitPublish(page *rod.Page, title, content string, tags []string, location string, scheduleTime *time.Time) error {
@@ -326,7 +560,7 @@ func submitPublish(page *rod.Page, title, content string, tags []string, locatio
 		slog.Info("定时发布设置完成", "schedule_time", scheduleTime.Format("2006-01-02 15:04"))
 	}
 
-	submitButton, err := findPublishButton(page)
+	submitButton, err := waitForPublishButtonClickable(page)
 	if err != nil {
 		return err
 	}
@@ -335,8 +569,7 @@ func submitPublish(page *rod.Page, title, content string, tags []string, locatio
 		return errors.Wrap(err, "点击发布按钮失败")
 	}
 
-	time.Sleep(3 * time.Second)
-	return nil
+	return waitForPublishResult(page)
 }
 
 func findPublishButton(page *rod.Page) (*rod.Element, error) {
@@ -769,6 +1002,8 @@ func isElementVisible(elem *rod.Element) bool {
 
 // setSchedulePublish 设置定时发布时间
 func setSchedulePublish(page *rod.Page, t time.Time) error {
+	slog.Info("开始设置定时发布", "schedule_time", t.Format(time.RFC3339))
+
 	// 1. 点击定时发布开关
 	if err := clickScheduleSwitch(page); err != nil {
 		return err
@@ -781,39 +1016,109 @@ func setSchedulePublish(page *rod.Page, t time.Time) error {
 	}
 	time.Sleep(500 * time.Millisecond)
 
+	if err := verifyScheduleDateTime(page, t); err != nil {
+		return err
+	}
+
 	return nil
 }
 
-// clickScheduleSwitch 点击定时发布开关
 func clickScheduleSwitch(page *rod.Page) error {
 	switchElem, err := page.Element(".post-time-wrapper .d-switch")
 	if err != nil {
 		return errors.Wrap(err, "查找定时发布开关失败")
 	}
 
+	enabled, err := isScheduleSwitchEnabled(switchElem)
+	if err == nil && enabled {
+		slog.Info("定时发布开关已开启，跳过点击")
+		return nil
+	}
+
 	if err := switchElem.Click(proto.InputMouseButtonLeft, 1); err != nil {
 		return errors.Wrap(err, "点击定时发布开关失败")
 	}
-	slog.Info("已点击定时发布开关")
+
+	time.Sleep(300 * time.Millisecond)
+	enabled, err = isScheduleSwitchEnabled(switchElem)
+	if err != nil {
+		slog.Info("已点击定时发布开关")
+		return nil
+	}
+	if !enabled {
+		return errors.New("定时发布开关点击后未生效")
+	}
+	slog.Info("定时发布开关已开启")
 	return nil
 }
 
-// setDateTime 设置日期时间
 func setDateTime(page *rod.Page, t time.Time) error {
 	dateTimeStr := t.Format("2006-01-02 15:04")
 
-	input, err := page.Element(".date-picker-container input")
+	inputElem, err := page.Element(".date-picker-container input")
 	if err != nil {
 		return errors.Wrap(err, "查找日期时间输入框失败")
 	}
 
-	if err := input.SelectAllText(); err != nil {
+	if err := inputElem.SelectAllText(); err != nil {
 		return errors.Wrap(err, "选择日期时间文本失败")
 	}
-	if err := input.Input(dateTimeStr); err != nil {
+	if err := inputElem.Input(dateTimeStr); err != nil {
 		return errors.Wrap(err, "输入日期时间失败")
 	}
+	inputElem.MustKeyActions().Press(input.Enter).MustDo()
+	time.Sleep(200 * time.Millisecond)
+	clickEmptyPosition(page)
 	slog.Info("已设置日期时间", "datetime", dateTimeStr)
 
 	return nil
+}
+
+func verifyScheduleDateTime(page *rod.Page, t time.Time) error {
+	expected := t.Format("2006-01-02 15:04")
+	inputEl, err := page.Element(".date-picker-container input")
+	if err != nil {
+		return errors.Wrap(err, "查找日期时间输入框失败")
+	}
+	val, err := inputEl.Attribute("value")
+	if err != nil {
+		return errors.Wrap(err, "读取日期时间输入框失败")
+	}
+	actual := ""
+	if val != nil {
+		actual = strings.TrimSpace(*val)
+	}
+	if actual == "" {
+		r, err := inputEl.Property("value")
+		if err == nil {
+			actual = strings.TrimSpace(r.String())
+		}
+	}
+	slog.Info("定时发布输入框回读", "expected", expected, "actual", actual)
+	if actual == "" || !strings.Contains(actual, expected) {
+		return errors.Errorf("定时发布时间未正确写入输入框: expected=%s actual=%s", expected, actual)
+	}
+	return nil
+}
+
+func isScheduleSwitchEnabled(elem *rod.Element) (bool, error) {
+	if elem == nil {
+		return false, errors.New("empty switch element")
+	}
+	if v, err := elem.Attribute("aria-checked"); err == nil && v != nil {
+		return strings.EqualFold(strings.TrimSpace(*v), "true"), nil
+	}
+	if v, err := elem.Attribute("aria-pressed"); err == nil && v != nil {
+		return strings.EqualFold(strings.TrimSpace(*v), "true"), nil
+	}
+	if cls, err := elem.Attribute("class"); err == nil && cls != nil {
+		c := strings.ToLower(*cls)
+		if strings.Contains(c, "checked") || strings.Contains(c, "on") || strings.Contains(c, "active") {
+			return true, nil
+		}
+		if strings.Contains(c, "unchecked") || strings.Contains(c, "off") || strings.Contains(c, "inactive") {
+			return false, nil
+		}
+	}
+	return false, nil
 }

@@ -128,7 +128,7 @@ func waitForPublishButtonClickable(page *rod.Page) (*rod.Element, error) {
 				continue
 			}
 			if cls, _ := btn.Attribute("class"); cls != nil && strings.Contains(*cls, "disabled") {
-				return btn, nil
+				continue
 			}
 			return btn, nil
 		}

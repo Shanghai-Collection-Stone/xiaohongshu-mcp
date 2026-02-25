@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "users": [
+    {
+      "account": "default",
+      "cookie_file": "cookies/default.json",
+      "enabled": true
+    }
+  ]
+}

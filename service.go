@@ -395,6 +395,11 @@ func (s *XiaohongshuService) PublishContentForAccount(ctx context.Context, accou
 	// 解析定时发布时间
 	var scheduleTime *time.Time
 	if req.ScheduleAt != "" {
+		logrus.WithFields(logrus.Fields{
+			"account":     s.effectiveAccount(account),
+			"schedule_at": req.ScheduleAt,
+		}).Info("publish: schedule requested")
+
 		t, err := time.Parse(time.RFC3339, req.ScheduleAt)
 		if err != nil {
 			return nil, fmt.Errorf("定时发布时间格式错误，请使用 ISO8601 格式: %v", err)
@@ -415,7 +420,11 @@ func (s *XiaohongshuService) PublishContentForAccount(ctx context.Context, accou
 		}
 
 		scheduleTime = &t
-		logrus.Infof("设置定时发布时间: %s", t.Format("2006-01-02 15:04"))
+		logrus.WithFields(logrus.Fields{
+			"account":     s.effectiveAccount(account),
+			"schedule_at": req.ScheduleAt,
+			"schedule_ui": t.Format("2006-01-02 15:04"),
+		}).Info("publish: schedule validated")
 	}
 
 	// 构建发布内容

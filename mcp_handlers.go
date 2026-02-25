@@ -1097,6 +1097,17 @@ func (s *AppServer) handleBatchTaskOpen(ctx context.Context) *MCPToolResult {
 
 func (s *AppServer) prepareBatchPostForQueue(ctx context.Context, post BatchPost) (BatchPost, error) {
 	_ = ctx
+	logrus.WithFields(logrus.Fields{
+		"title":           shortenForLog(post.Title, 64),
+		"title_len_units": xhsutil.CalcTitleLength(post.Title),
+		"content_runes":   len([]rune(post.Content)),
+		"images_in":       len(post.Images),
+		"tags_in":         len(post.Tags),
+		"location_set":    strings.TrimSpace(post.Location) != "",
+		"schedule_at":     strings.TrimSpace(post.ScheduleAt),
+		"max_content":     configs.GetContentMaxRunes(),
+	}).Info("batch:add_post precheck begin")
+
 	post.Title = strings.TrimSpace(post.Title)
 	if xhsutil.CalcTitleLength(post.Title) > 20 {
 		return BatchPost{}, fmt.Errorf("标题长度超过限制")
@@ -1141,6 +1152,24 @@ func (s *AppServer) prepareBatchPostForQueue(ctx context.Context, post BatchPost
 	}
 
 	maxImageBytes := configs.GetImageMaxBytes()
+	urlCount := 0
+	localCount := 0
+	for _, img := range images {
+		if downloader.IsImageURL(img) {
+			urlCount++
+		} else {
+			localCount++
+		}
+	}
+	logrus.WithFields(logrus.Fields{
+		"images_total":          len(images),
+		"images_url":            urlCount,
+		"images_local":          localCount,
+		"images_sample":         shortenSliceForLog(images, 3, 96),
+		"image_max_bytes":       maxImageBytes,
+		"downloader_output_dir": configs.GetImagesPath(),
+	}).Info("batch:add_post images normalized")
+
 	localErrs := make([]error, 0)
 	for i, img := range images {
 		if downloader.IsImageURL(img) {
@@ -1167,14 +1196,25 @@ func (s *AppServer) prepareBatchPostForQueue(ctx context.Context, post BatchPost
 		images[i] = abs
 	}
 	if len(localErrs) > 0 {
+		logrus.WithFields(logrus.Fields{
+			"errors": len(localErrs),
+		}).Warn("batch:add_post local image validation failed")
 		return BatchPost{}, errors.Join(localErrs...)
 	}
 
 	processor := downloader.NewImageProcessor()
 	localPaths, err := processor.ProcessImages(images)
 	if err != nil {
+		logrus.WithFields(logrus.Fields{
+			"error": err.Error(),
+		}).Warn("batch:add_post image processing failed")
 		return BatchPost{}, err
 	}
+
+	logrus.WithFields(logrus.Fields{
+		"images_out":        len(localPaths),
+		"images_out_sample": shortenSliceForLog(localPaths, 3, 96),
+	}).Info("batch:add_post precheck ok")
 
 	post.Images = localPaths
 	return post, nil
@@ -1187,16 +1227,72 @@ func (s *AppServer) handleBatchTaskAddPost(ctx context.Context, args BatchTaskAd
 	if strings.TrimSpace(args.TaskID) == "" {
 		return &MCPToolResult{Content: []MCPContent{{Type: "text", Text: "缺少 task_id"}}, IsError: true}
 	}
+	logrus.WithFields(logrus.Fields{
+		"task_id":          args.TaskID,
+		"title":            shortenForLog(args.Post.Title, 64),
+		"content_runes":    len([]rune(args.Post.Content)),
+		"images_in":        len(args.Post.Images),
+		"tags_in":          len(args.Post.Tags),
+		"location_set":     strings.TrimSpace(args.Post.Location) != "",
+		"schedule_at":      strings.TrimSpace(args.Post.ScheduleAt),
+		"images_in_sample": shortenSliceForLog(args.Post.Images, 3, 96),
+	}).Info("batch:add_post request received")
+
 	prepared, err := s.prepareBatchPostForQueue(ctx, args.Post)
 	if err != nil {
+		logrus.WithFields(logrus.Fields{
+			"task_id": args.TaskID,
+			"error":   err.Error(),
+		}).Warn("batch:add_post rejected")
 		return &MCPToolResult{Content: []MCPContent{{Type: "text", Text: "预检失败: " + err.Error()}}, IsError: true}
 	}
 	if err := s.runtime.BatchTasks.AddPost(args.TaskID, prepared); err != nil {
+		logrus.WithFields(logrus.Fields{
+			"task_id": args.TaskID,
+			"error":   err.Error(),
+		}).Warn("batch:add_post store add failed")
 		return &MCPToolResult{Content: []MCPContent{{Type: "text", Text: "添加失败: " + err.Error()}}, IsError: true}
 	}
 	snap, _ := s.runtime.BatchTasks.Snapshot(args.TaskID)
+	logrus.WithFields(logrus.Fields{
+		"task_id": args.TaskID,
+		"status":  snap.Status,
+		"total":   snap.Total,
+		"done":    snap.Done,
+		"failed":  snap.Failed,
+	}).Info("batch:add_post stored")
 	jsonData, _ := json.MarshalIndent(map[string]any{"task_id": args.TaskID, "status": snap}, "", "  ")
 	return &MCPToolResult{Content: []MCPContent{{Type: "text", Text: string(jsonData)}}}
+}
+
+func shortenForLog(s string, maxRunes int) string {
+	s = strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", " "), "\n", " "))
+	if maxRunes <= 0 {
+		return s
+	}
+	r := []rune(s)
+	if len(r) <= maxRunes {
+		return s
+	}
+	return string(r[:maxRunes]) + "..."
+}
+
+func shortenSliceForLog(items []string, maxItems int, maxRunes int) []string {
+	if maxItems <= 0 {
+		maxItems = 1
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	n := len(items)
+	if n > maxItems {
+		n = maxItems
+	}
+	out := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, shortenForLog(items[i], maxRunes))
+	}
+	return out
 }
 
 func (s *AppServer) handleBatchTaskRun(ctx context.Context, args BatchTaskRunArgs) *MCPToolResult {
@@ -1207,7 +1303,7 @@ func (s *AppServer) handleBatchTaskRun(ctx context.Context, args BatchTaskRunArg
 	if strings.TrimSpace(args.TaskID) == "" {
 		return &MCPToolResult{Content: []MCPContent{{Type: "text", Text: "缺少 task_id"}}, IsError: true}
 	}
-	cfg := BatchTaskRunConfig{CallbackURL: args.CallbackURL, MinDelayMs: args.MinDelayMs, MaxDelayMs: args.MaxDelayMs, MaxAccounts: args.MaxAccounts, ItemTimeoutMs: args.ItemTimeoutMs}
+	cfg := BatchTaskRunConfig{Targets: args.Targets, CallbackURL: args.CallbackURL, MinDelayMs: args.MinDelayMs, MaxDelayMs: args.MaxDelayMs, MaxAccounts: args.MaxAccounts, ItemTimeoutMs: args.ItemTimeoutMs}
 	if err := s.runtime.BatchTasks.StartRun(s.runtime, s.xiaohongshuService, args.TaskID, cfg); err != nil {
 		return &MCPToolResult{Content: []MCPContent{{Type: "text", Text: "运行失败: " + err.Error()}}, IsError: true}
 	}
@@ -1224,7 +1320,7 @@ func (s *AppServer) handleBatchTaskRunSync(ctx context.Context, args BatchTaskRu
 		return &MCPToolResult{Content: []MCPContent{{Type: "text", Text: "缺少 task_id"}}, IsError: true}
 	}
 
-	cfg := BatchTaskRunConfig{CallbackURL: args.CallbackURL, MinDelayMs: args.MinDelayMs, MaxDelayMs: args.MaxDelayMs, MaxAccounts: args.MaxAccounts, ItemTimeoutMs: args.ItemTimeoutMs}
+	cfg := BatchTaskRunConfig{Targets: args.Targets, CallbackURL: args.CallbackURL, MinDelayMs: args.MinDelayMs, MaxDelayMs: args.MaxDelayMs, MaxAccounts: args.MaxAccounts, ItemTimeoutMs: args.ItemTimeoutMs}
 	if err := s.runtime.BatchTasks.StartRun(s.runtime, s.xiaohongshuService, args.TaskID, cfg); err != nil {
 		return &MCPToolResult{Content: []MCPContent{{Type: "text", Text: "运行失败: " + err.Error()}}, IsError: true}
 	}

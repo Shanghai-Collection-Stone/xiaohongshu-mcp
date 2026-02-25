@@ -132,11 +132,12 @@ type BatchPost struct {
 }
 
 type BatchTaskRunConfig struct {
-	CallbackURL   string `json:"callback_url,omitempty"`
-	MinDelayMs    int    `json:"min_delay_ms,omitempty"`
-	MaxDelayMs    int    `json:"max_delay_ms,omitempty"`
-	MaxAccounts   int    `json:"max_accounts,omitempty"`
-	ItemTimeoutMs int    `json:"item_timeout_ms,omitempty"`
+	Targets       TargetUsers `json:"targets,omitempty"`
+	CallbackURL   string      `json:"callback_url,omitempty"`
+	MinDelayMs    int         `json:"min_delay_ms,omitempty"`
+	MaxDelayMs    int         `json:"max_delay_ms,omitempty"`
+	MaxAccounts   int         `json:"max_accounts,omitempty"`
+	ItemTimeoutMs int         `json:"item_timeout_ms,omitempty"`
 }
 
 type BatchTask struct {
@@ -333,18 +334,23 @@ func (s *BatchTaskStore) run(runtime *Runtime, publisher BatchPublisher, taskID 
 	if cfg.ItemTimeoutMs > 0 {
 		itemTimeout = time.Duration(cfg.ItemTimeoutMs) * time.Millisecond
 	}
-	accounts := []string{"default"}
-	if runtime.UserPool != nil {
-		accts := runtime.UserPool.EnabledAccounts()
-		if len(accts) > 0 {
-			accounts = accts
-		}
-	}
+
+	accounts := resolveBatchRunAccounts(runtime, cfg.Targets)
 	if cfg.MaxAccounts > 0 && cfg.MaxAccounts < len(accounts) {
 		accounts = accounts[:cfg.MaxAccounts]
 	}
 	if len(accounts) == 0 {
 		accounts = []string{"default"}
+	}
+	if len(accounts) == 1 {
+		logrus.WithFields(logrus.Fields{
+			"task_id":        taskID,
+			"account":        accounts[0],
+			"max_accounts":   cfg.MaxAccounts,
+			"targets_set":    cfg.Targets.AllEnabled || len(cfg.Targets.Accounts) > 0 || len(cfg.Targets.Indices) > 0,
+			"targets":        summarizeTargets(cfg.Targets),
+			"userpool_ready": runtime != nil && runtime.UserPool != nil,
+		}).Warn("batch: only one account selected, rotation will not take effect")
 	}
 
 	workers := runtime.BrowserPoolSize
@@ -390,12 +396,21 @@ func (s *BatchTaskStore) run(runtime *Runtime, publisher BatchPublisher, taskID 
 			req := &PublishRequest{Title: j.post.Title, Content: j.post.Content, Images: j.post.Images, Tags: j.post.Tags, Location: j.post.Location, ScheduleAt: j.post.ScheduleAt}
 			ctx, cancel := context.WithTimeout(context.Background(), itemTimeout)
 			logrus.WithFields(logrus.Fields{
-				"task_id": taskID,
-				"idx":     j.idx,
-				"account": account,
-				"title":   shortenOneLine(req.Title, 32),
-				"images":  len(req.Images),
-				"tags":    len(req.Tags),
+				"task_id":       taskID,
+				"idx":           j.idx,
+				"accounts_len":  len(accounts),
+				"account_idx":   j.idx % len(accounts),
+				"account":       account,
+				"title":         shortenOneLine(req.Title, 32),
+				"images":        len(req.Images),
+				"tags":          len(req.Tags),
+				"schedule_at":   shortenOneLine(req.ScheduleAt, 64),
+				"location_set":  strings.TrimSpace(req.Location) != "",
+				"callback_set":  cfg.CallbackURL != "",
+				"delay_ms":      []int{cfg.MinDelayMs, cfg.MaxDelayMs},
+				"max_accounts":  cfg.MaxAccounts,
+				"targets":       summarizeTargets(cfg.Targets),
+				"userpool_file": userPoolFilePath(runtime),
 			}).Info("batch: publish begin")
 			var err error
 			func() {
@@ -485,6 +500,131 @@ func (s *BatchTaskStore) run(runtime *Runtime, publisher BatchPublisher, taskID 
 	}
 
 	s.sendCallback(cfg.CallbackURL, taskID)
+}
+
+func resolveBatchRunAccounts(runtime *Runtime, targets TargetUsers) []string {
+	if runtime == nil || runtime.UserPool == nil {
+		if targets.AllEnabled || len(targets.Accounts) > 0 || len(targets.Indices) > 0 {
+			logrus.WithFields(logrus.Fields{
+				"targets": summarizeTargets(targets),
+			}).Warn("batch: userpool not ready, fall back to default account")
+		}
+		return []string{"default"}
+	}
+
+	summaries := runtime.UserPool.ListSummaries()
+	enabled := runtime.UserPool.EnabledAccounts()
+	logrus.WithFields(logrus.Fields{
+		"targets":        summarizeTargets(targets),
+		"userpool_file":  runtime.UserPool.FilePath(),
+		"users_total":    len(summaries),
+		"users_enabled":  len(enabled),
+		"enabled_sample": shortenStringSlice(enabled, 10),
+	}).Info("batch: resolve accounts begin")
+
+	var out []string
+	seen := make(map[string]struct{})
+
+	appendAccount := func(a string) {
+		a = strings.TrimSpace(a)
+		if a == "" {
+			return
+		}
+		if _, ok := seen[a]; ok {
+			return
+		}
+		seen[a] = struct{}{}
+		out = append(out, a)
+	}
+
+	if len(targets.Accounts) > 0 {
+		for _, a := range targets.Accounts {
+			appendAccount(a)
+		}
+		if len(out) > 0 {
+			logrus.WithFields(logrus.Fields{
+				"source":   "targets.accounts",
+				"accounts": out,
+			}).Info("batch: resolve accounts done")
+			return out
+		}
+	}
+
+	if len(targets.Indices) > 0 {
+		for _, idx := range targets.Indices {
+			i := idx
+			u, err := runtime.UserPool.Resolve("", &i)
+			if err != nil {
+				continue
+			}
+			appendAccount(u.Account)
+		}
+		if len(out) > 0 {
+			logrus.WithFields(logrus.Fields{
+				"source":   "targets.indices",
+				"accounts": out,
+			}).Info("batch: resolve accounts done")
+			return out
+		}
+	}
+
+	if targets.AllEnabled || (len(targets.Accounts) == 0 && len(targets.Indices) == 0) {
+		for _, a := range runtime.UserPool.EnabledAccounts() {
+			appendAccount(a)
+		}
+	}
+
+	if len(out) == 0 {
+		logrus.WithFields(logrus.Fields{
+			"source": "fallback_default",
+		}).Warn("batch: resolve accounts empty, fall back to default account")
+		return []string{"default"}
+	}
+	logrus.WithFields(logrus.Fields{
+		"source":   "userpool.enabled_accounts",
+		"accounts": out,
+	}).Info("batch: resolve accounts done")
+	return out
+}
+
+func shortenStringSlice(items []string, maxItems int) []string {
+	if maxItems <= 0 {
+		maxItems = 1
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	n := len(items)
+	if n > maxItems {
+		n = maxItems
+	}
+	out := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, shortenOneLine(items[i], 120))
+	}
+	return out
+}
+
+func summarizeTargets(t TargetUsers) map[string]any {
+	out := map[string]any{
+		"all_enabled": t.AllEnabled,
+	}
+	if len(t.Accounts) > 0 {
+		out["accounts"] = shortenStringSlice(t.Accounts, 10)
+		out["accounts_len"] = len(t.Accounts)
+	}
+	if len(t.Indices) > 0 {
+		out["indices"] = t.Indices
+		out["indices_len"] = len(t.Indices)
+	}
+	return out
+}
+
+func userPoolFilePath(runtime *Runtime) string {
+	if runtime == nil || runtime.UserPool == nil {
+		return ""
+	}
+	return runtime.UserPool.FilePath()
 }
 
 func (s *BatchTaskStore) sendCallback(callbackURL string, taskID string) {

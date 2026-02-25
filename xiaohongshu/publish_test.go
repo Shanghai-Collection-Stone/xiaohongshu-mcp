@@ -33,3 +33,22 @@ func TestPublish(t *testing.T) {
 	})
 	assert.NoError(t, err)
 }
+
+func TestClassifyPublishMessage(t *testing.T) {
+	cases := []struct {
+		msg  string
+		want publishMessageKind
+	}{
+		{msg: "", want: publishMessageUnknown},
+		{msg: "发布成功", want: publishMessageSuccess},
+		{msg: "提交成功，进入审核中", want: publishMessageSuccess},
+		{msg: "审核中", want: publishMessageSuccess},
+		{msg: "发布失败", want: publishMessageError},
+		{msg: "上传失败，请重试", want: publishMessageError},
+		{msg: "网络异常", want: publishMessageUnknown},
+	}
+
+	for _, c := range cases {
+		assert.Equal(t, c.want, classifyPublishMessage(c.msg), c.msg)
+	}
+}

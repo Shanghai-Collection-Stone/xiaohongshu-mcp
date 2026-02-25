@@ -155,23 +155,25 @@ type BatchTaskAddPostArgs struct {
 }
 
 type BatchTaskRunArgs struct {
-	TaskID        string `json:"task_id" jsonschema:"批量任务ID"`
-	CallbackURL   string `json:"callback_url,omitempty" jsonschema:"回调URL（POST JSON：任务进度与状态）"`
-	MinDelayMs    int    `json:"min_delay_ms,omitempty" jsonschema:"每篇发布后随机延迟最小值（毫秒）"`
-	MaxDelayMs    int    `json:"max_delay_ms,omitempty" jsonschema:"每篇发布后随机延迟最大值（毫秒）"`
-	MaxAccounts   int    `json:"max_accounts,omitempty" jsonschema:"最多使用多少个账号（从用户池启用账号顺序取前N个）"`
-	ItemTimeoutMs int    `json:"item_timeout_ms,omitempty" jsonschema:"单条发布超时时间（毫秒），超时将计入失败并继续下一条；默认 360000ms"`
+	TaskID        string      `json:"task_id" jsonschema:"批量任务ID"`
+	Targets       TargetUsers `json:"targets,omitempty" jsonschema:"可选账号集合（为空则使用 users.json enabled=true 的账号列表）"`
+	CallbackURL   string      `json:"callback_url,omitempty" jsonschema:"回调URL（POST JSON：任务进度与状态）"`
+	MinDelayMs    int         `json:"min_delay_ms,omitempty" jsonschema:"每篇发布后随机延迟最小值（毫秒）"`
+	MaxDelayMs    int         `json:"max_delay_ms,omitempty" jsonschema:"每篇发布后随机延迟最大值（毫秒）"`
+	MaxAccounts   int         `json:"max_accounts,omitempty" jsonschema:"最多使用多少个账号执行（从目标集合头部截取）"`
+	ItemTimeoutMs int         `json:"item_timeout_ms,omitempty" jsonschema:"单条发布超时时间（毫秒），超时将计入失败并继续下一条；默认 360000ms"`
 }
 
 type BatchTaskRunSyncArgs struct {
-	TaskID         string `json:"task_id" jsonschema:"批量任务ID"`
-	CallbackURL    string `json:"callback_url,omitempty" jsonschema:"回调URL（POST JSON：任务进度与状态）"`
-	MinDelayMs     int    `json:"min_delay_ms,omitempty" jsonschema:"每篇发布后随机延迟最小值（毫秒）"`
-	MaxDelayMs     int    `json:"max_delay_ms,omitempty" jsonschema:"每篇发布后随机延迟最大值（毫秒）"`
-	MaxAccounts    int    `json:"max_accounts,omitempty" jsonschema:"最多使用多少个账号（从用户池启用账号顺序取前N个）"`
-	ItemTimeoutMs  int    `json:"item_timeout_ms,omitempty" jsonschema:"单条发布超时时间（毫秒），超时将计入失败并继续下一条；默认 360000ms"`
-	WaitTimeoutMs  int    `json:"wait_timeout_ms,omitempty" jsonschema:"等待批量任务完成的最长时间（毫秒）；默认 1800000ms"`
-	PollIntervalMs int    `json:"poll_interval_ms,omitempty" jsonschema:"轮询间隔（毫秒），默认 500ms"`
+	TaskID         string      `json:"task_id" jsonschema:"批量任务ID"`
+	Targets        TargetUsers `json:"targets,omitempty" jsonschema:"可选账号集合（为空则使用 users.json enabled=true 的账号列表）"`
+	CallbackURL    string      `json:"callback_url,omitempty" jsonschema:"回调URL（POST JSON：任务进度与状态）"`
+	MinDelayMs     int         `json:"min_delay_ms,omitempty" jsonschema:"每篇发布后随机延迟最小值（毫秒）"`
+	MaxDelayMs     int         `json:"max_delay_ms,omitempty" jsonschema:"每篇发布后随机延迟最大值（毫秒）"`
+	MaxAccounts    int         `json:"max_accounts,omitempty" jsonschema:"最多使用多少个账号执行（从目标集合头部截取）"`
+	ItemTimeoutMs  int         `json:"item_timeout_ms,omitempty" jsonschema:"单条发布超时时间（毫秒），超时将计入失败并继续下一条；默认 360000ms"`
+	WaitTimeoutMs  int         `json:"wait_timeout_ms,omitempty" jsonschema:"等待批量任务完成的最长时间（毫秒）；默认 1800000ms"`
+	PollIntervalMs int         `json:"poll_interval_ms,omitempty" jsonschema:"轮询间隔（毫秒），默认 500ms"`
 }
 
 // InitMCPServer 初始化 MCP Server
